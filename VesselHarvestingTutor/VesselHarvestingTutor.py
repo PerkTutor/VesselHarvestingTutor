@@ -2,6 +2,7 @@ import os
 import unittest
 import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
+from vtk import vtkMath
 import logging
 import time, datetime
 import math, numpy
@@ -258,13 +259,14 @@ class VesselHarvestingTutorWidget(ScriptedLoadableModuleWidget):
 
   
   def onSaveButton(self):
-    filename = "C:/Users/cyan/Documents/dev/VesselHarvestingTutor/Data/Evh-Metrics-" + str(datetime.date.today()) + '.csv'
+    filename = "C:/Users/perk/VesselHarvesting/VesselHarvestingTutor/Data/Evh-Metrics-" + str(datetime.date.today()) + '.csv'
     metrics = logic.getDistanceMetrics()
     with open(filename, 'w+') as f:  
       writer = csv.writer(f, delimiter=',')
       writer.writerow(['Metric', 'Value']) 
       for key, value in metrics.items():
         writer.writerow([key, value]) 
+    print "Results successfully saved."
 
 
   def cleanup(self):
@@ -282,6 +284,7 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
     self.resetMetrics()
     self.branchStarts = []
     self.modelPolydata = {}
+    self.visiblePolydata = {}
     self.SKELETON_MODEL_NAME = 'Skeleton Model'
 
 
@@ -305,8 +308,10 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
     self.path = []
     self.lastTimestamp = time.time()
     self.runTutor = False    
-    # remove existing fiducials
+    # remove existing fiducials if they exist 
     fidNode = slicer.util.getNode('MarkupsFiducial_*')
+    if fidNode != None:
+      fidNode = slicer.util.getNode('MarkupsFiducial_*')
     slicer.mrmlScene.RemoveNode(fidNode)
 
 
@@ -318,8 +323,8 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
       vesselToRetractor = slicer.vtkMRMLLinearTransformNode()
       vesselToRetractor.SetName('VesselToRetractor')
       slicer.mrmlScene.AddNode(vesselToRetractor)
-
-    vesselModelToVessel = slicer.util.getNode('VesselModelToVessel')
+    
+    vesselModelToVessel = slicer.util.getNode('VesselModelToVessel') 
     if vesselModelToVessel == None: 
       vesselModelToVessel = slicer.vtkMRMLLinearTransformNode()
       vesselModelToVessel.SetName('VesselModelToVessel')
@@ -379,43 +384,39 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
     triggerToCutter.AddObserver(slicer.vtkMRMLLinearTransformNode.TransformModifiedEvent, self.updateTransforms)
     stylusTipToStylus.SetAndObserveTransformNodeID(cutterToRetractorID)
 
+
   def loadModels(self):
+    
     moduleDir = os.path.dirname(slicer.modules.vesselharvestingtutor.path)
 
-    skeletonModel = slicer.util.getNode(self.SKELETON_MODEL_NAME)
-    if skeletonModel == None: 
-      skeletonModel = slicer.mrmlScene.AddNode(slicer.vtkMRMLModelNode())
-      skeletonModel.SetName(self.SKELETON_MODEL_NAME)
+    """     
+    for i in range(NUM_MODELS):  
+      fiducialFilename = 'Points_' + str(i) + '.fcsv'
+      fiducialFilePath = os.path.join(moduleDir, os.pardir,'CadModels/vessel', fiducialFilename)
+      slicer.util.loadMarkupsFiducialList(fiducialFilePath)
+      fiducialNode = slicer.util.getNode('Points_' + str(i))         
 
-    #load vessel
-    self.vesselModel = slicer.util.getNode('Model_1')
-    if not self.vesselModel:      
-      for i in range(NUM_MODELS):  
-        fiducialFilename = 'Points_' + str(i) + '.fcsv'
-        fiducialFilePath = os.path.join(moduleDir, os.pardir,'CadModels/vessel', fiducialFilename)
-        slicer.util.loadMarkupsFiducialList(fiducialFilePath)
-        fiducialNode = slicer.util.getNode('Points_' + str(i))         
+      # create models
+      outputModel = slicer.mrmlScene.AddNode(slicer.vtkMRMLModelNode())
+      outputModel.CreateDefaultDisplayNodes()
+      outputModel.SetName('Model_' + str(i))
+      outputModel.GetDisplayNode().SetSliceIntersectionVisibility(True)
+      outputModel.GetDisplayNode().SetColor(1,0,0)
+      self.modelPolydata['Model_' + str(i)] = outputModel.GetPolyData()
 
-        # create models
-        outputModel = slicer.mrmlScene.AddNode(slicer.vtkMRMLModelNode())
-        outputModel.CreateDefaultDisplayNodes()
-        outputModel.SetName('Model_' + str(i))
-        outputModel.GetDisplayNode().SetSliceIntersectionVisibility(True)
-        outputModel.GetDisplayNode().SetColor(1,0,0)
-        self.modelPolydata['Model_' + str(i)] = outputModel.GetPolyData()
+      markupsToModel = slicer.mrmlScene.AddNode(slicer.vtkMRMLMarkupsToModelNode())
+      markupsToModel.SetAutoUpdateOutput(True)
+      markupsToModel.SetAndObserveModelNodeID(outputModel.GetID())
+      markupsToModel.SetAndObserveMarkupsNodeID(fiducialNode.GetID())
+      markupsToModel.SetModelType(slicer.vtkMRMLMarkupsToModelNode.Curve)
+      markupsToModel.SetCurveType(slicer.vtkMRMLMarkupsToModelNode.CardinalSpline)
 
-        markupsToModel = slicer.mrmlScene.AddNode(slicer.vtkMRMLMarkupsToModelNode())
-        markupsToModel.SetAutoUpdateOutput(True)
-        markupsToModel.SetAndObserveModelNodeID(outputModel.GetID())
-        markupsToModel.SetAndObserveMarkupsNodeID(fiducialNode.GetID())
-        markupsToModel.SetModelType(slicer.vtkMRMLMarkupsToModelNode.Curve)
-        markupsToModel.SetCurveType(slicer.vtkMRMLMarkupsToModelNode.CardinalSpline)
+      if i == 0:
+        self.vesselModel = outputModel
+        markupsToModel.SetTubeRadius(5)
+      else:
+        markupsToModel.SetTubeRadius(2)
 
-        if i == 0:
-          self.vesselModel = outputModel
-          markupsToModel.SetTubeRadius(5)
-        else:
-          markupsToModel.SetTubeRadius(2)
 
 
     # initialize array with first point of each branch
@@ -424,7 +425,7 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
       world = [0,0,0,0]
       temp.GetNthFiducialWorldCoordinates(0, world) 
       self.branchStarts.append(world)
-
+    """
     self.retractorModel= slicer.util.getNode('RetractorModel')
     if not self.retractorModel:
       modelFilePath = os.path.join(moduleDir, os.pardir,'CadModels', 'VesselRetractorHead.stl')
@@ -474,24 +475,43 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
     vesselToRetractor = slicer.util.getNode('VesselToRetractor')
     
     vesselID = self.vesselModelToVessel.GetID()
-    skeletonModel.SetAndObserveTransformNodeID(vesselID)
-    for i in range(NUM_MODELS): 
-      branchName = 'Points_' + str(i)
-      branchNode = slicer.util.getNode(branchName)
-      branchNode.SetAndObserveTransformNodeID(vesselID)
+    # get transform to world from vesselID
+    vesselToWorld = self.vesselModelToVessel.GetTransformToParent()
+    skeletonModel = slicer.util.getNode(self.SKELETON_MODEL_NAME)
+    if skeletonModel == None: 
+      skeletonModel = slicer.mrmlScene.AddNode(slicer.vtkMRMLModelNode())
+      skeletonModel.SetName(self.SKELETON_MODEL_NAME)
+      skeletonModel.CreateDefaultDisplayNodes()
+      skeletonModel.GetDisplayNode().SetScalarVisibility(True)
 
-      modelName = 'Model_' + str(i)
-      modelNode = slicer.util.getNode(modelName)
-      modelNode.SetAndObserveTransformNodeID(vesselID)
+    #load vessel
+    appender = vtk.vtkAppendPolyData()
+    self.vesselModel = slicer.util.getNode('Model_3')
+    if not self.vesselModel: 
+      for i in range(NUM_MODELS):  
+        # load stl file for vessel branch 
+        filename = 'Model_' + str(i) + '.stl' 
+        filePath = os.path.join(moduleDir, os.pardir,'CadModels/vessel', filename)
+        [success, vesselBranch] = slicer.util.loadModel(filePath, returnNode=True)
+        poly = vesselBranch.GetPolyData()
 
-
-  def distance(self, a, b):
-    dist = 0
-    length = len(b)
-    for i in range(length):
-      dist += (a[i] - b[i]) ** 2
-    return math.sqrt(dist)
-
+        # set vessel color to red 
+        colors = vtk.vtkIntArray()
+        numPoints = poly.GetNumberOfPoints()
+        colors.SetNumberOfValues(numPoints)
+        for i in range(numPoints):
+          colors.SetValue(i, 3)
+        poly.GetPointData().SetScalars(colors)
+        
+        self.modelPolydata['Model_' + str(i)] = poly
+        self.visiblePolydata['Model_' + str(i)] = True # TODO improve representation for efficiency 
+        transformFilter = vtk.vtkTransformPolyDataFilter()
+        transformFilter.SetTransform(vesselToWorld) # transform used here 
+        transformFilter.SetInputData(poly)
+        transformFilter.Update()
+        appender.AddInputData(transformFilter.GetOutput())
+      appender.Update()
+      skeletonModel.SetAndObservePolyData(appender.GetOutput())  
   
   def calculateVesselToRetractorAngle(self, vesselVector, retractorVector):
     angleRadians = vtk.vtkMath.AngleBetweenVectors(vesselVector[0:3], retractorVector[0:3])
@@ -503,7 +523,7 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
   
   
   def updateTransforms(self, event, caller):
-    
+    #self.updateSkeletonModel()
     triggerToCutter = slicer.mrmlScene.GetFirstNodeByName('TriggerToCutter')    
     if triggerToCutter == None:
       logging.error('Could not found TriggerToCutter!')
@@ -534,7 +554,7 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
     # Rotate cutter moving part
     cutterMovingToTipTransform.RotateY(openAngle)
     # Translate center of rotation of the moving part to origin
-    cutterMovingToTipTransform.Translate(0,0,20)
+    cutterMovingToTipTransform.Translate(0,0, 20)
     
     cutterMovingToTip = slicer.mrmlScene.GetFirstNodeByName('CutterMovingToCutterTip')
     cutterMovingToTip.SetAndObserveTransformToParent(cutterMovingToTipTransform)   
@@ -622,7 +642,8 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
     self.vesselModel = slicer.util.getNode('Model_0') 
     polydata = self.vesselModel.GetPolyData()
     numVesselPoints = polydata.GetNumberOfPoints()
-    vesselPoints = [ self.distance(cutterTipWorld, polydata.GetPoint(i)) for i in range(numVesselPoints)]
+    # TODO check if points need to be reformatted 
+    vesselPoints = [ vtkMath.Distance2BetweenPoints(cutterTipWorld, polydata.GetPoint(i)) for i in range(numVesselPoints)]
     cutDistance = min(vesselPoints)
     if self.metrics['maxDistance'] < cutDistance:
       self.metrics['maxDistance'] = str(round(cutDistance, 2)) + " mm"
@@ -631,7 +652,7 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
     # TODO average cut distance logic 
     
   
-  def getDistanceMetrics(self):
+  def getDistanceMetrics(self): 
     if len(self.pathFiducialsX) > 0:
       x = numpy.array(self.pathFiducialsX)
       y = numpy.array(self.pathFiducialsY)
@@ -658,7 +679,14 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
     #self.updateScaledAtlasModelsAndPoints() 
     #ScoliUsLib.SpineRegistration.computeRigidTransformsScaledAtlasToRas(self.perVertebraPointsDict_ScaledAtlas, self.perVertebraScaledAtlasToRasTransforms)
     appender = vtk.vtkAppendPolyData()
+
     for name, poly in self.modelPolydata.iteritems():
+      if poly:
+        colors = vtk.vtkIntArray()
+        colors.SetNumberOfValues(poly.GetNumberOfPoints())
+        for i in range(poly.GetNumberOfPoints()):
+          colors.SetValue(i, 1)
+        poly.GetPointData().SetScalars(colors)
       transformFilter = vtk.vtkTransformPolyDataFilter()
       transformFilter.SetTransform(self.modelPolydata[name])
       transformFilter.SetInputData(poly)
