@@ -467,15 +467,18 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
     #load vessel
     appender = vtk.vtkAppendPolyData()
     self.vesselModel = slicer.util.getNode('Model_0')
+    self.vesselModelToVesselID = slicer.util.getNode('VesselModelToVessel').GetID()
     if not self.vesselModel: 
       for i in range(NUM_MODELS): 
         if i > 0: 
           # load points for vessel branch
+          # TODO put points in transform hierarchy 
           fiducialFilename = 'Points_' + str(i) + '.fcsv'
           fiducialFilePath = os.path.join(moduleDir, os.pardir,'CadModels/vessel', fiducialFilename)
           slicer.util.loadMarkupsFiducialList(fiducialFilePath)
           temp = slicer.util.getNode('Points_' + str(i))
           fiducialNode = slicer.util.getNode('Points_' + str(i))
+          fiducialNode.SetAndObserveTransformNodeID(self.vesselModelToVesselID)
           world = [0,0,0,0]
           temp.GetNthFiducialWorldCoordinates(0, world) 
           self.branchStarts.append(world)

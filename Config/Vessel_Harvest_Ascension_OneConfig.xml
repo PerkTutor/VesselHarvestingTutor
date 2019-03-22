@@ -38,7 +38,7 @@
       VideoFormat="YUY2"
       CaptureDeviceId="0" >
       <DataSources>
-        <DataSource Type="Video" Id="Video" PortUsImageOrientation="UN" ImageType="BRIGHTNESS" />
+        <DataSource Type="Video" Id="Video" PortUsImageOrientation="MN" ImageType="BRIGHTNESS" />
       </DataSources>      
       <OutputChannels>
         <OutputChannel Id="WebcamStream" VideoDataSourceId="Video" />
