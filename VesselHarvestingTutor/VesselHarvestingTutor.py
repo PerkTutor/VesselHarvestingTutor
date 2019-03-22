@@ -28,15 +28,13 @@ class VesselHarvestingTutor(ScriptedLoadableModule):
     self.parent.categories = ["IGT"]
     self.parent.dependencies = []
     self.parent.contributors = ["Perk Lab"] 
-    self.parent.helpText = """
-This is an example of scripted loadable module bundled in an extension.
-It performs a simple thresholding on the input volume and optionally captures a screenshot.
-"""
+    self.parent.helpText = """ This is an example of scripted loadable module bundled in an extension.
+    It performs a simple thresholding on the input volume and optionally captures a screenshot.
+    """
     self.parent.helpText += self.getDefaultModuleDocumentationLink()
-    self.parent.acknowledgementText = """
-This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc.
-and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
-""" # replace with organization, grant and thanks.
+    self.parent.acknowledgementText = """  This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc.
+    and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
+    """ # replace with organization, grant and thanks.
 
 #
 # VesselHarvestingTutorWidget
@@ -151,7 +149,7 @@ class VesselHarvestingTutorWidget(ScriptedLoadableModuleWidget):
 
     global logic 
     logic = VesselHarvestingTutorLogic()
-    logic.runTutor = False
+    #logic.runTutor = False
     logic.loadTransforms()
     logic.loadModels()
     logic.resetModels()
@@ -178,10 +176,10 @@ class VesselHarvestingTutorWidget(ScriptedLoadableModuleWidget):
 
   def onRunTutorButton(self):
     if not self.runTutor: # if tutor is not running, start it 
-      logic.runTutor = True
+      #logic.runTutor = True
       self.onStartTutorButton()
     else: # stop active tutor 
-      logic.runTutor = False
+      #logic.runTutor = False
       self.onStopTutorButton()
 
 
@@ -219,7 +217,7 @@ class VesselHarvestingTutorWidget(ScriptedLoadableModuleWidget):
     self.runTutorButton.setText("Start Recording")
     self.runTutor = not self.runTutor
     
-    logic.runTutor = False
+    #logic.runTutor = False
     
     # Calculate total procedure time 
     stopTime = time.time() 
@@ -276,7 +274,7 @@ class VesselHarvestingTutorWidget(ScriptedLoadableModuleWidget):
 
   
   def onSaveButton(self):
-    filename = "C:/Users/perk/VesselHarvesting/VesselHarvestingTutor/Data/Evh-Metrics-" + str(datetime.date.today()) + '.csv'
+    filename = "C:/Users/christina/Documents/VesselHarvestingTutor/Data/Evh-Metrics-" + str(datetime.date.today()) + '.csv'
     metrics = logic.getDistanceMetrics()
     with open(filename, 'w+') as f:  
       writer = csv.writer(f, delimiter=',')
@@ -324,7 +322,7 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
     self.pathFiducialsY = []
     self.path = []
     self.lastTimestamp = time.time()
-    self.runTutor = False    
+    #self.runTutor = False    
     # remove existing fiducials if they exist 
     fidNode = slicer.util.getNode('MarkupsFiducial_*')
     if fidNode != None:
@@ -470,7 +468,18 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
     appender = vtk.vtkAppendPolyData()
     self.vesselModel = slicer.util.getNode('Model_0')
     if not self.vesselModel: 
-      for i in range(NUM_MODELS):  
+      for i in range(NUM_MODELS): 
+        if i > 0: 
+          # load points for vessel branch
+          fiducialFilename = 'Points_' + str(i) + '.fcsv'
+          fiducialFilePath = os.path.join(moduleDir, os.pardir,'CadModels/vessel', fiducialFilename)
+          slicer.util.loadMarkupsFiducialList(fiducialFilePath)
+          temp = slicer.util.getNode('Points_' + str(i))
+          fiducialNode = slicer.util.getNode('Points_' + str(i))
+          world = [0,0,0,0]
+          temp.GetNthFiducialWorldCoordinates(0, world) 
+          self.branchStarts.append(world)
+
         # load stl file for vessel branch 
         filename = 'Model_' + str(i) + '.stl' 
         filePath = os.path.join(moduleDir, os.pardir,'CadModels/vessel', filename)
@@ -507,7 +516,6 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
   
   
   def updateTransforms(self, event, caller):
-    #self.updateSkeletonModel()
     triggerToCutter = slicer.mrmlScene.GetFirstNodeByName('TriggerToCutter')    
     if triggerToCutter == None:
       logging.error('Could not found TriggerToCutter!')
@@ -577,21 +585,34 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
     removebranch = ""     
     cutterTip = slicer.util.getNode("CutterMovingModel")
     cutterTipPolyData = cutterTip.GetPolyData()
-    for branch, branchPolydata in self.modelPolydata.iteritems():
-      distanceFilter = vtk.vtkDistancePolyDataFilter()
-      distanceFilter.SetInputData(0, cutterTipPolyData)
-      distanceFilter.SetInputData(1, branchPolydata)
-      distanceFilter.Update()
-      distancePolyData = distanceFilter.GetOutput()
-      distanceRange = distancePolyData.GetScalarRange()
-      cutDistance = min(abs(distanceRange[0]),abs(distanceRange[1]))
-      if minDistance > cutDistance:
-        minDistance = cutDistance
-        removeBranch = branch
-    if cutDistance < 20 and removeBranch != "Model_0": # block deletion of the main vessel 
-      self.visiblePolydata[removeBranch] = False
-      self.updateSkeletonModel()
-      self.updateDistanceMetrics(cutDistance)
+    cutLocation = 0
+    branchNum = 0 # tracks which vessel should be cut if applicable 
+    # finds closest branch to be cut 
+    for point in self.branchStarts: 
+      index = self.branchStarts.index(point) + 1
+      if self.visiblePolydata['Model_' + str(index)]:
+        cutterTipWorld = [0,0,0,0]
+        fiducial = slicer.util.getNode("F")
+        fiducial.GetNthFiducialWorldCoordinates(0,cutterTipWorld)
+        cutLocation = (cutterTipWorld[0], cutterTipWorld[1], cutterTipWorld[2])
+        branchPoint = (point[0], point[1], point[2])
+        distanceToBranch = math.sqrt(vtkMath.Distance2BetweenPoints(cutLocation, branchPoint)) 
+        if distanceToBranch < minDistance:
+          minDistance = distanceToBranch
+          branchNum = self.branchStarts.index(point) 
+    if branchNum != 0:
+      vesselAxis = self.modelPolydata['Model_0']
+      n = vesselAxis.GetNumberOfPoints()
+      distanceToAxis = float('inf')
+      for i in range(n):
+        distance = math.sqrt(vtkMath.Distance2BetweenPoints(cutLocation, vesselAxis.GetPoint(i)))
+        if distance < distanceToAxis:
+          distanceToAxis = distance
+      if distanceToAxis < 2000: # block deletion of the main vessel 
+        removeBranch = 'Model_' + str(branchNum)
+        self.visiblePolydata[removeBranch] = False
+        self.updateSkeletonModel()
+        self.updateDistanceMetrics(distanceToAxis)
      
 
   def npArrayFromVtkMatrix(self, vtkMatrix):

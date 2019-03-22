@@ -2,7 +2,7 @@
 
   <DataCollection StartupDelaySec="1.0" >
     <DeviceSet 
-      Name="Vessel Harvesting Ascension"
+      Name="Vessel Harvesting Ascension OneConfig"
       Description="EM sensors: 1 Retractor, 2 Trigger, 3 Cutter 4 Vessel." 
     />
 
@@ -31,6 +31,43 @@
       </OutputChannels>
     </Device>
 
+    <Device
+      Id="WebcamDevice" 
+      Type="MmfVideo" 
+      FrameSize="640 480"
+      VideoFormat="YUY2"
+      CaptureDeviceId="0" >
+      <DataSources>
+        <DataSource Type="Video" Id="Video" PortUsImageOrientation="UN" ImageType="BRIGHTNESS" />
+      </DataSources>      
+      <OutputChannels>
+        <OutputChannel Id="WebcamStream" VideoDataSourceId="Video" />
+      </OutputChannels>
+    </Device>
+    
+    <Device 
+      Id="WebcamCaptureDevice"
+      Type="VirtualCapture"
+      BaseFilename="WebcamRecording.mhd"
+      EnableCapturingOnStart="FALSE"
+      RequestedFrameRate="15">
+      <InputChannels>
+        <InputChannel Id="WebcamStream" />
+      </InputChannels>
+    </Device>
+
+    <Device 
+      Id="TrackedVideoDevice" 
+      Type="VirtualMixer" >
+      <InputChannels>
+        <InputChannel Id="TrackerStream" />
+        <InputChannel Id="WebcamStream" />
+      </InputChannels>
+      <OutputChannels>
+        <OutputChannel Id="TrackedWebcamStream"/>
+      </OutputChannels>
+    </Device>
+
   </DataCollection>
 
   <PlusOpenIGTLinkServer
@@ -38,16 +75,20 @@
     MaxTimeSpentWithProcessingMs="50"
     ListeningPort="18944"
     SendValidTransformsOnly="true"
-    OutputChannelId="TrackerStream" >
+    OutputChannelId="TrackedWebcamStream" >
     <DefaultClientInfo>
       <MessageTypes>
         <Message Type="TRANSFORM" />
+        <Message Type="IMAGE" />
       </MessageTypes>
       <TransformNames>
 	    <Transform Name="TriggerToCutter" />
-		<Transform Name="CutterToRetractor" />
-		<Transform Name="VesselToRetractor" />
+		    <Transform Name="CutterToRetractor" />
+		    <Transform Name="VesselToRetractor" />
       </TransformNames>
+      <ImageNames>
+        <Image Name="Webcam" EmbeddedTransformToFrame="Webcam" />
+      </ImageNames>
     </DefaultClientInfo>
   </PlusOpenIGTLinkServer>
 
