@@ -149,7 +149,6 @@ class VesselHarvestingTutorWidget(ScriptedLoadableModuleWidget):
 
     global logic 
     logic = VesselHarvestingTutorLogic()
-    #logic.runTutor = False
     logic.loadTransforms()
     logic.loadModels()
     logic.resetModels()
@@ -211,6 +210,9 @@ class VesselHarvestingTutorWidget(ScriptedLoadableModuleWidget):
       self.saveButton.setVisible(False)
 
       self.startTime = time.time()
+
+      global logic
+      logic.tutorRunning = True 
   
 
   def onStopTutorButton(self):    
@@ -218,6 +220,8 @@ class VesselHarvestingTutorWidget(ScriptedLoadableModuleWidget):
     self.runTutor = not self.runTutor
     
     #logic.runTutor = False
+    global logic
+    logic.tutorRunning = False 
     
     # Calculate total procedure time 
     stopTime = time.time() 
@@ -298,6 +302,7 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
   
   def __init__(self):
     self.resetMetrics()
+    self.tutorRunning = False
     self.branchStarts = []
     self.modelPolydata = {}
     self.visiblePolydata = {}
@@ -305,6 +310,7 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
 
 
   def resetModels(self):
+    print 'Resetting models'
     for i in range(0, NUM_MODELS):
       self.visiblePolydata['Model_' + str(i)] = True
     self.updateSkeletonModel()
@@ -376,12 +382,6 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
       [success, cameraToRetractor] = slicer.util.loadTransform(filePath, returnNode=True)
       cameraToRetractor.SetName('CameraToRetractor')
 
-    stylusTipToStylus = slicer.util.getNode('StylusTipToStylus')
-    if stylusTipToStylus == None:
-      filePath = os.path.join(moduleDir, os.pardir, 'Transforms', 'StylusTipToStylus.h5')
-      [success, stylusTipToStylus] = slicer.util.loadTransform(filePath, returnNode=True)
-      stylusTipToStylus.SetName('StylusTipToStylus')
-
     # TODO debug this 
     defaultSceneCamera = slicer.util.getNode('Default Scene Camera')
     cameraToRetractorID = cameraToRetractor.GetID()
@@ -397,7 +397,6 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
     triggerToCutter.SetAndObserveTransformNodeID(cutterToRetractorID)
     cutterMovingToTip.SetAndObserveTransformNodeID(cutterTipToCutter.GetID())
     triggerToCutter.AddObserver(slicer.vtkMRMLLinearTransformNode.TransformModifiedEvent, self.updateTransforms)
-    stylusTipToStylus.SetAndObserveTransformNodeID(cutterToRetractorID)
 
 
   def loadModels(self):
@@ -409,11 +408,6 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
       [success, self.retractorModel] = slicer.util.loadModel(modelFilePath, returnNode=True)
       self.retractorModel.SetName('RetractorModel')
       self.retractorModel.GetDisplayNode().SetColor(0.9, 0.9, 0.9)
-    # set model under stylusTipToStylus transform 
-    stylusTipToStylus = slicer.util.getNode('StylusTipToStylus')
-    if stylusTipToStylus:      
-      stylusID = stylusTipToStylus.GetID()
-      self.retractorModel.SetAndObserveTransformNodeID(stylusID)
     
     self.cutterBaseModel = slicer.util.getNode('CutterBaseModel')
     if self.cutterBaseModel == None:
@@ -578,8 +572,7 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
       self.lastTimestamp = time.time()
 
       self.updateAngleMetrics()
-      # TODO DEBUG the cut enabler  
-      if math.fabs(openAngle) < 0.25:
+      if math.fabs(openAngle) < 0.25 and self.tutorRunning:
         self.checkModel()
 
 
@@ -603,7 +596,8 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
         if distanceToBranch < minDistance:
           minDistance = distanceToBranch
           branchNum = self.branchStarts.index(point) 
-    if branchNum != 0:
+    print 'min distance', minDistance
+    if branchNum != 0 and minDistance < 250: # block deletion of the main vessel 
       vesselAxis = self.modelPolydata['Model_0']
       n = vesselAxis.GetNumberOfPoints()
       distanceToAxis = float('inf')
@@ -611,8 +605,10 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
         distance = math.sqrt(vtkMath.Distance2BetweenPoints(cutLocation, vesselAxis.GetPoint(i)))
         if distance < distanceToAxis:
           distanceToAxis = distance
-      if distanceToAxis < 2000: # block deletion of the main vessel 
+      print 'distance to axis', distanceToAxis
+      if distanceToAxis < 300: 
         removeBranch = 'Model_' + str(branchNum)
+        print 'removing branch ' + str(branchNum)
         self.visiblePolydata[removeBranch] = False
         self.updateSkeletonModel()
         self.updateDistanceMetrics(distanceToAxis)
@@ -641,6 +637,7 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
     
 
   def updateDistanceMetrics(self, cutDistance):
+    print cutDistance
     if self.metrics['maxDistance'] < cutDistance:
       self.metrics['maxDistance'] = str(round(cutDistance, 2)) + " mm"
     if self.metrics['minDistance'] > cutDistance:
