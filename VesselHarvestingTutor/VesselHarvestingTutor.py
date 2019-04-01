@@ -1,7 +1,7 @@
 import os
 import unittest
 import vtk, qt, ctk, slicer
-#import vtkSlicerSegmentComparisonModuleLogicPython
+import time
 from slicer.ScriptedLoadableModule import *
 from vtk import vtkMath
 import logging
@@ -121,6 +121,14 @@ class VesselHarvestingTutorWidget(ScriptedLoadableModuleWidget):
     self.procedureTimeValueLabel.setAlignment(0x0002) # Align right
     evhTutorFormLayout.addRow(self.procedureTimeDescriptionLabel, self.procedureTimeValueLabel)
 
+    # Number of vessel branches cut
+    self.numVesselsCutLabel = qt.QLabel("Number of successfully cut branches:")
+    self.numVesselsCutLabel.setVisible(False)
+    self.numVesselsCutValueLabel = qt.QLabel("")
+    self.numVesselsCutValueLabel.setVisible(False)
+    self.numVesselsCutValueLabel.setAlignment(0x0002) # Align right
+    evhTutorFormLayout.addRow(self.numVesselsCutLabel, self.numVesselsCutValueLabel)
+
     # Button to display retractor trajectory 
     self.showPathButton = qt.QPushButton("Reconstruct retractor trajectory")
     self.showPathButton.toolTip = "Visualize retractor trajectory overlayed on vessel model."
@@ -206,6 +214,9 @@ class VesselHarvestingTutorWidget(ScriptedLoadableModuleWidget):
       self.procedureTimeDescriptionLabel.setVisible(False)
       self.procedureTimeValueLabel.setVisible(False)
 
+      self.numVesselsCutLabel.setVisible(False)
+      self.numVesselsCutValueLabel.setVisible(False)
+
       self.showPathButton.setVisible(False)
       self.saveButton.setVisible(False)
 
@@ -219,7 +230,6 @@ class VesselHarvestingTutorWidget(ScriptedLoadableModuleWidget):
     self.runTutorButton.setText("Start Recording")
     self.runTutor = not self.runTutor
     
-    #logic.runTutor = False
     global logic
     logic.tutorRunning = False 
     
@@ -252,6 +262,10 @@ class VesselHarvestingTutorWidget(ScriptedLoadableModuleWidget):
     self.procedureTimeDescriptionLabel.setVisible(True)
     self.procedureTimeValueLabel.setVisible(True)
 
+    self.numVesselsCutValueLabel.setText(str(metrics['branchesCut']))
+    self.numVesselsCutLabel.setVisible(True)
+    self.numVesselsCutValueLabel.setVisible(True)
+
     self.showPathButton.setVisible(True)
     self.saveButton.setVisible(True)
 
@@ -278,7 +292,8 @@ class VesselHarvestingTutorWidget(ScriptedLoadableModuleWidget):
 
   
   def onSaveButton(self):
-    filename = "C:/Users/christina/Documents/VesselHarvestingTutor/Data/Evh-Metrics-" + str(datetime.date.today()) + '.csv'
+    timestamp = time.strftime("%H:%M:%S").replace(':', '-')
+    filename = "C:/Users/christina/Documents/VesselHarvestingTutor/Data/Evh-Metrics-" + str(datetime.date.today()) + ' ' + timestamp + '.csv'
     metrics = logic.getDistanceMetrics()
     with open(filename, 'w+') as f:  
       writer = csv.writer(f, delimiter=',')
@@ -322,8 +337,10 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
       'maxDistance': 0,
       'minAngle': 180,
       'maxAngle': 0,
-      'trajectorySlope': 0
+      'trajectorySlope': 0,
+      'branchesCut': 0
     }
+    print 'reset', self.metrics
     self.pathFiducialsX = []
     self.pathFiducialsY = []
     self.path = []
@@ -382,7 +399,6 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
       [success, cameraToRetractor] = slicer.util.loadTransform(filePath, returnNode=True)
       cameraToRetractor.SetName('CameraToRetractor')
 
-    # TODO debug this 
     defaultSceneCamera = slicer.util.getNode('Default Scene Camera')
     cameraToRetractorID = cameraToRetractor.GetID()
     defaultSceneCamera.SetAndObserveTransformNodeID(cameraToRetractorID)
@@ -608,7 +624,7 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
       print 'distance to axis', distanceToAxis
       if distanceToAxis < 300: 
         removeBranch = 'Model_' + str(branchNum)
-        print 'removing branch ' + str(branchNum)
+        print 'removing branch ' + str(branchNum), self.metrics['branchesCut']
         self.visiblePolydata[removeBranch] = False
         self.updateSkeletonModel()
         self.updateDistanceMetrics(distanceToAxis)
@@ -637,7 +653,6 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
     
 
   def updateDistanceMetrics(self, cutDistance):
-    print cutDistance
     if self.metrics['maxDistance'] < cutDistance:
       self.metrics['maxDistance'] = str(round(cutDistance, 2)) + " mm"
     if self.metrics['minDistance'] > cutDistance:
@@ -646,6 +661,9 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
     
   
   def getDistanceMetrics(self): 
+    for key in self.visiblePolydata:
+      if not self.visiblePolydata[key]:
+        self.metrics['branchesCut'] += 1
     if len(self.pathFiducialsX) > 0:
       x = numpy.array(self.pathFiducialsX)
       y = numpy.array(self.pathFiducialsY)
