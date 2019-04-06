@@ -333,10 +333,13 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
     self.metrics = {
       'minDistance': float("inf"),
       'maxDistance': 0,
+      'meanDistance': 0,
+      'stdDevCutDistances': 0,
       'minAngle': 180,
       'maxAngle': 0,
       'trajectorySlope': 0,
-      'branchesCut': 0
+      'branchesCut': 0,
+      'cutDistances': []
     }
     self.pathFiducialsX = []
     self.pathFiducialsY = []
@@ -577,7 +580,7 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
       # set new fiducial's label and hide from 3D view
       n = self.pathFiducialsNode.GetNumberOfFiducials() - 1
       self.pathFiducialsNode.SetNthFiducialLabel(n, str(n))
-      #self.pathFiducialsNode.SetNthFiducialVisibility(n, 0)  
+      self.pathFiducialsNode.SetNthFiducialVisibility(n, 0)  
 
       self.pathFiducialsX.append(cutterTipWorld[0])
       self.pathFiducialsY.append(cutterTipWorld[1])
@@ -627,7 +630,7 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
         print 'removing branch ' + str(branchNum)
         self.visiblePolydata[removeBranch] = False
         self.updateSkeletonModel()
-        self.updateDistanceMetrics(distanceToAxis)
+        self.metrics['cutDistances'].append(distanceToAxis)
      
 
   def npArrayFromVtkMatrix(self, vtkMatrix):
@@ -650,18 +653,13 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
     cutterDirection = numpy.dot(self.npArrayFromVtkMatrix(cutterToRas), numpy.array([ 0, 0, 1, 0]))
 
     self.calculateVesselToRetractorAngle(vesselDirection, cutterDirection)
-    
-
-  def updateDistanceMetrics(self, cutDistance):
-    if self.metrics['maxDistance'] < cutDistance:
-      self.metrics['maxDistance'] = str(round(cutDistance, 2)) + " mm"
-    elif self.metrics['minDistance'] > cutDistance:
-      self.metrics['minDistance'] = str(round(cutDistance, 2)) + " mm"
-    # TODO average cut distance logic 
-    # TODO handle edge cases: 2 cuts, verify that max distance always > min distance 
-    
+        
   
   def getDistanceMetrics(self): 
+    self.metrics['minDistance'] = min(self.metrics['cutDistances'])
+    self.metrics['maxDistance'] = max(self.metrics['cutDistances'])
+    self.metrics['meanDistance'] = sum(self.metrics['cutDistances']) / len(self.metrics['cutDistances'])
+    self.metrics['stdDevCutDistances'] = numpy.array(self.metrics['cutDistances']).std()
     for key in self.visiblePolydata:
       if not self.visiblePolydata[key]:
         self.metrics['branchesCut'] += 1
