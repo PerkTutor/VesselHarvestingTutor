@@ -103,6 +103,22 @@ class VesselHarvestingTutorWidget(ScriptedLoadableModuleWidget):
     self.maxDistanceValueLabel.setAlignment(0x0002) # Align right
     evhTutorFormLayout.addRow(self.maxDistanceDescriptionLabel, self.maxDistanceValueLabel)
 
+    # Average distance from vessel
+    self.avgDistanceDescriptionLabel = qt.QLabel("Average Distance Cut from Dissected Vein:")
+    self.avgDistanceDescriptionLabel.setVisible(False)
+    self.avgDistanceValueLabel = qt.QLabel("0")
+    self.avgDistanceValueLabel.setVisible(False)
+    self.avgDistanceValueLabel.setAlignment(0x0002) # Align right
+    evhTutorFormLayout.addRow(self.avgDistanceDescriptionLabel, self.avgDistanceValueLabel)
+
+    # Standard deviation of distance from vessel
+    self.stdevDistanceDescriptionLabel = qt.QLabel("Standard Deviation of Distance Cut from Dissected Vein:")
+    self.stdevDistanceDescriptionLabel.setVisible(False)
+    self.stdevDistanceValueLabel = qt.QLabel("0")
+    self.stdevDistanceValueLabel.setVisible(False)
+    self.stdevDistanceValueLabel.setAlignment(0x0002) # Align right
+    evhTutorFormLayout.addRow(self.stdevDistanceDescriptionLabel, self.stdevDistanceValueLabel)
+
     # Slope of cutter's trajectory 
     self.trajectorySlopeDescriptionLabel = qt.QLabel("Slope of Linear Trajectory:")
     self.trajectorySlopeDescriptionLabel.setVisible(False)
@@ -206,6 +222,12 @@ class VesselHarvestingTutorWidget(ScriptedLoadableModuleWidget):
       self.maxDistanceDescriptionLabel.setVisible(False)
       self.maxDistanceValueLabel.setVisible(False)
 
+      self.avgDistanceDescriptionLabel.setVisible(False)
+      self.avgDistanceValueLabel.setVisible(False)
+
+      self.stdevDistanceDescriptionLabel.setVisible(False)
+      self.stdevDistanceValueLabel.setVisible(False)
+
       self.trajectorySlopeDescriptionLabel.setVisible(False)
       self.trajectorySlopeValueLabel.setVisible(False)
 
@@ -251,6 +273,14 @@ class VesselHarvestingTutorWidget(ScriptedLoadableModuleWidget):
     self.maxDistanceDescriptionLabel.setVisible(True)
     self.maxDistanceValueLabel.setText(str(metrics['maxDistance']))
     self.maxDistanceValueLabel.setVisible(True)
+
+    self.avgDistanceDescriptionLabel.setVisible(True)
+    self.avgDistanceValueLabel.setText(str(metrics['meanDistance']))
+    self.avgDistanceValueLabel.setVisible(True)
+
+    self.stdevDistanceDescriptionLabel.setVisible(True)
+    self.stdevDistanceValueLabel.setText(str(metrics['stdDevCutDistances']))
+    self.stdevDistanceValueLabel.setVisible(True)
 
     self.trajectorySlopeDescriptionLabel.setVisible(True)
     self.trajectorySlopeValueLabel.setText(str(metrics['trajectorySlope']))
@@ -660,8 +690,8 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
   def getDistanceMetrics(self): 
     self.metrics['minDistance'] = round(min(self.metrics['cutDistances']), 2)
     self.metrics['maxDistance'] = round(max(self.metrics['cutDistances']), 2)
-    self.metrics['meanDistance'] = sum(self.metrics['cutDistances']) / len(self.metrics['cutDistances'])
-    self.metrics['stdDevCutDistances'] = numpy.array(self.metrics['cutDistances']).std()
+    self.metrics['meanDistance'] = round(sum(self.metrics['cutDistances']) / len(self.metrics['cutDistances']), 2)
+    self.metrics['stdDevCutDistances'] = round(numpy.array(self.metrics['cutDistances']).std(), 2)
     for key in self.visiblePolydata:
       if not self.visiblePolydata[key]:
         self.metrics['branchesCut'] += 1
