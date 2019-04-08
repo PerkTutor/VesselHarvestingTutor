@@ -9,7 +9,7 @@ import time, datetime
 import math, numpy
 import csv
 
-NUM_MODELS = 11
+NUM_MODELS = 9
 
 #
 # VesselHarvestingTutor
@@ -316,10 +316,10 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
   def __init__(self):
     self.resetMetrics()
     self.tutorRunning = False
-    self.branchStarts = []
     self.modelPolydata = {}
     self.visiblePolydata = {}
     self.SKELETON_MODEL_NAME = 'Skeleton Model'
+    self.lastCutTimestamp = time.time()
 
 
   def resetModels(self):
@@ -482,16 +482,11 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
       for i in range(NUM_MODELS): 
         if i > 0: 
           # load points for vessel branch
-          # TODO put points in transform hierarchy 
           fiducialFilename = 'Points_' + str(i) + '.fcsv'
           fiducialFilePath = os.path.join(moduleDir, os.pardir,'CadModels/vessel', fiducialFilename)
           slicer.util.loadMarkupsFiducialList(fiducialFilePath)
-          temp = slicer.util.getNode('Points_' + str(i))
           fiducialNode = slicer.util.getNode('Points_' + str(i))
           fiducialNode.SetAndObserveTransformNodeID(self.vesselModelToVesselID)
-          world = [0,0,0,0]
-          temp.GetNthFiducialWorldCoordinates(0, world) 
-          self.branchStarts.append(world)
 
         # load stl file for vessel branch 
         filename = 'Model_' + str(i) + '.stl' 
@@ -588,46 +583,53 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
       self.lastTimestamp = time.time()
 
       self.updateAngleMetrics()
-      if math.fabs(openAngle) < 0.25 and self.tutorRunning:
+      if math.fabs(openAngle) < 0.25 and self.tutorRunning and self.lastTimestamp - self.lastCutTimestamp > 3:
+        self.lastCutTimestamp = time.time()
         self.checkModel()
 
 
-  def checkModel(self): # check if vessel branch needs to be snipped
-    minDistance = float("inf")     
+  def getClosestBranch(self, cutLocation):
+    branchNum = 0
+    minDistance = float("inf")
+    for i in range(NUM_MODELS - 1):
+      index = i + 1
+      modelName = 'Model_' + str(index)
+      if self.visiblePolydata[modelName]:
+        poly = self.modelPolydata[modelName]
+        n = poly.GetNumberOfPoints()
+        for j in range(n):
+          distance = math.sqrt(vtkMath.Distance2BetweenPoints(cutLocation, poly.GetPoint(j)))
+          if distance < minDistance:
+            minDistance = distance
+            branchNum = index
+    print '\n', 'Distance to closest branch: ', minDistance, ', closest branch number: ', branchNum
+    return minDistance, branchNum
+
+
+  def checkModel(self): # check if vessel branch needs to be snipped  
     removebranch = ""     
     cutterTip = slicer.util.getNode("CutterMovingModel")
-    cutterTipPolyData = cutterTip.GetPolyData()
     branchNum = 0 # tracks which vessel should be cut if applicable 
 
     cutterTipWorld = [0,0,0,0]
     fiducial = slicer.util.getNode("F")
-    fiducial.GetNthFiducialWorldCoordinates(0,cutterTipWorld)
+    fiducial.GetNthFiducialWorldCoordinates(0,cutterTipWorld) # Get point on cutter tip 
     cutLocation = (cutterTipWorld[0], cutterTipWorld[1], cutterTipWorld[2])
-
+    self.lastCutTimestamp = time.time()
     # finds closest branch to be cut 
-
-    for point in self.branchStarts: 
-      index = self.branchStarts.index(point) + 1
-      if self.visiblePolydata['Model_' + str(index)] == True:
-        branchPoint = (point[0], point[1], point[2])
-        distanceToBranch = math.sqrt(vtkMath.Distance2BetweenPoints(cutLocation, branchPoint)) 
-        if distanceToBranch < minDistance:
-          minDistance = distanceToBranch
-          branchNum = self.branchStarts.index(point) 
+    minDistance, branchNum = self.getClosestBranch(cutLocation)
      
     if branchNum != 0: # block deletion of the main vessel 
       vesselAxis = self.modelPolydata['Model_0']
       n = vesselAxis.GetNumberOfPoints()
       distanceToAxis = float('inf')
-      test = []
       for i in range(n):
-        test.append(vesselAxis.GetPoint(i))
         distance = math.sqrt(vtkMath.Distance2BetweenPoints(cutLocation, vesselAxis.GetPoint(i)))
         if distance < distanceToAxis:
           distanceToAxis = distance
-      if minDistance < 10000: 
+      if minDistance < 280: 
         removeBranch = 'Model_' + str(branchNum)
-        print 'removing branch ' + str(branchNum)
+        print 'Removing branch ' + str(branchNum)
         self.visiblePolydata[removeBranch] = False
         self.updateSkeletonModel()
         self.metrics['cutDistances'].append(distanceToAxis)
@@ -656,8 +658,8 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
         
   
   def getDistanceMetrics(self): 
-    self.metrics['minDistance'] = min(self.metrics['cutDistances'])
-    self.metrics['maxDistance'] = max(self.metrics['cutDistances'])
+    self.metrics['minDistance'] = round(min(self.metrics['cutDistances']), 2)
+    self.metrics['maxDistance'] = round(max(self.metrics['cutDistances']), 2)
     self.metrics['meanDistance'] = sum(self.metrics['cutDistances']) / len(self.metrics['cutDistances'])
     self.metrics['stdDevCutDistances'] = numpy.array(self.metrics['cutDistances']).std()
     for key in self.visiblePolydata:
