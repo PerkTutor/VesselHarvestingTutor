@@ -371,7 +371,6 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
       'branchesCut': 0,
       'cutDistances': []
     }
-    self.branchStarts = []
     self.pathFiducialsX = []
     self.pathFiducialsY = []
     self.path = []
@@ -520,7 +519,6 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
           fiducialNode = slicer.util.getNode('Points_' + str(i))
           world = [0,0,0]
           fiducialNode.GetNthFiducialPosition(0,world)
-          self.branchStarts.append(world)
           self.branchStartsFiducialsNode.AddFiducial(world[0], world[1], world[2])
           self.branchStartsFiducialsNode.SetNthFiducialVisibility(i-1, 0) 
           fiducialNode.SetAndObserveTransformNodeID(self.vesselModelToVesselID)
@@ -551,7 +549,7 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
       skeletonModel.SetAndObservePolyData(appender.GetOutput()) 
 
       slicer.mrmlScene.AddNode(self.branchStartsFiducialsNode)
-      fidNode = slicer.util.getNode("MarkupsFiducial_1")
+      fidNode = slicer.util.getNode("MarkupsFiducial_*")
       fidNode.SetName("Vessel Branch Starts")
       fidNode.SetAndObserveTransformNodeID(vesselID)
 
@@ -650,35 +648,12 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
     for i in range(numBranches):
       RAScoordinates = [0,0,0,0]
       self.branchStartsFiducialsNode.GetNthFiducialWorldCoordinates(i,RAScoordinates)
-      print cutLocation
       p = RAScoordinates[:-1]
       distance = math.sqrt(vtkMath.Distance2BetweenPoints(cutLocation, p))
       if distance < minDistance:
         minDistance = distance
         branchNum = i + 1
-    '''
-    for i in range(NUM_MODELS - 1):
-      index = i + 1
-      modelName = 'Model_' + str(index)
-      if self.visiblePolydata[modelName]:
-        poly = self.modelPolydata[modelName]
-        n = poly.GetNumberOfPoints()
-        for j in range(0, n, 15): # DEBUG reove the 15 and dropped fiducial 
-          p = poly.GetPoint(j)
-          distance = math.sqrt(vtkMath.Distance2BetweenPoints(cutLocation, p))
-          # add fiducial 
-          slicer.modules.markups.logic().AddFiducial(p[0], p[1], p[2])
-          if distance < minDistance:
-            minDistance = distance
-            branchNum = index
-          if distance < branchMin: # DEBUG
-            branchMin = distance
-            p = poly.GetPoint(j) #DEBUG
-        print 'distance to branch ', index, ': ', branchMin, ' closest point from branch ', p
-
-      branchMin, p = float("inf"), () # DEBUG
     print '\n', 'Distance to closest branch: ', minDistance, ', closest branch number: ', branchNum
-    '''
     return minDistance, branchNum
 
 
