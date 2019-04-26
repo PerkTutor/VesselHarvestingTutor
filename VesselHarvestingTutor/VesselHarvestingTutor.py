@@ -176,6 +176,12 @@ class VesselHarvestingTutorWidget(ScriptedLoadableModuleWidget):
     logic.loadModels()
     logic.resetModels()
 
+  def getDistance(self):
+      cutterTipWorld = [0,0,0,0]
+      fiducial = slicer.util.getNode("F")
+      fiducial.GetNthFiducialWorldCoordinates(0,cutterTipWorld)
+
+      # get fiducial 
 
   def setNoviceExperience(self):
     print "Experience level: Novice"
@@ -641,7 +647,7 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
         self.lastCutTimestamp = time.time()
         self.checkModel()
 
-  def checkVesselLocation(self):
+  def checkVesselLocation(self): #TODO implement re-centering for vessel and cutter models 
     vesselToRasTransform = vtk.vtkGeneralTransform()
     self.vesselModelToVessel.GetTransformToWorld(vesselToRasTransform) # vesselToRasTransform updated in place 
     rasToVesselTransform = vtk.vtkGeneralTransform()
@@ -671,40 +677,7 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
       vesselToPath.Translate(translateVesselToRetractor_vessel[0], translateVesselToRetractor_vessel[1], translateVesselToRetractor_vessel[2])
       vesselModelToVessel = slicer.util.getNode('VesselModelToVessel') 
       vesselModelToVessel.SetAndObserveTransformToParent(vesselToPath)
-    '''    
-    vesselToRAS = 
-    RAStoVessel = vesselToRAS.Inverse()
 
-    reftractorReferenceNode = slicer.util.getNode('Retractor Reference')
-    retractorRAScoordinates = [0, 0, 0, 0]
-    retractorFiducial = reftractorReferenceNode.GetNthFiducialWorldCoordinates(0, retractorRAScoordinates)
-    retractorLocationRAS = retractorRAScoordinates[:-1]
-
-    # TODO transform into vessel coords 
-    vesselFiducialsNode = slicer.util.getNode('Vessel Axis')
-    minDistance = float('inf')
-    closestPoint = []
-    for i in range(NUM_VESSEL_FIDS):
-      vesselFiducial = [0, 0, 0, 0]
-      vesselFiducialsNode.GetNthFiducialWorldCoordinates(0, vesselFiducial)
-      vesselLocation = vesselFiducial[:-1]
-      distance = math.sqrt(vtkMath.Distance2BetweenPoints(retractorLocation, vesselLocation))
-      if distance < minDistance:
-        minDistance = distance
-        closestPoint = vesselLocation
-    print minDistance, retractorLocation, closestPoint
-    if minDistance > 400:
-      translation = [ retractorLocation[0] - vesselLocation[0], retractorLocation[1] - vesselLocation[1], retractorLocation[2] - vesselLocation[2]]
-      print translation
-      vesselModelToVessel = slicer.util.getNode('VesselModelToVessel') 
-      translateVessel = vtk.vtkTransform()
-      translateVessel.Translate(translation[0], translation[1], translation[2])
-      vesselModelToVessel.SetAndObserveTransformToParent(translateVessel)
-
-      get transform to world (ras) for vessel 
-      vesselToWorld = self.vesselModelToVessel.GetTransformToWorld()
-      others: ras to vessel 
-      '''
 
   def getClosestBranch(self, cutLocation):
     branchNum = 0
