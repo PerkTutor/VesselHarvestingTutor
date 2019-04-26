@@ -10,6 +10,7 @@ import math, numpy
 import csv
 
 NUM_MODELS = 9
+NUM_VESSEL_FIDS = 36
 
 #
 # VesselHarvestingTutor
@@ -23,7 +24,7 @@ class VesselHarvestingTutor(ScriptedLoadableModule):
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "Vessel Harvesting Tutor" 
-    self.parent.categories = ["IGT"]
+    self.parent.categories = ["Perk Tutor"]
     self.parent.dependencies = []
     self.parent.contributors = ["Perk Lab"] 
     self.parent.helpText = """ This is an example of scripted loadable module bundled in an extension.
@@ -597,7 +598,6 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
       triggerAngle_Deg = 102.0
 
     openAngle = (triggerAngle_Deg - 90.0) * -2.2 # angle of cutter tip to shaft 
-    #print "triggerAngle_Deg: " + str(triggerAngle_Deg), "open ", openAngle #DEBUG
 
     cutterMovingToTipTransform = vtk.vtkTransform()
     # By default transformations occur in reverse order compared to source code line order.
@@ -615,6 +615,7 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
     # save fiducial point and update model polydata every 0.25 seconds 
     if (time.time() - self.lastTimestamp) > 0.25 and self.tutorRunning: 
       self.updateSkeletonModel()
+      #self.checkVesselLocation()
       cutterTipWorld = [0,0,0,0]
       fiducial = slicer.util.getNode("F")
       fiducial.GetNthFiducialWorldCoordinates(0,cutterTipWorld) # z coordinate not important for linear slope calculation
@@ -640,6 +641,70 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
         self.lastCutTimestamp = time.time()
         self.checkModel()
 
+  def checkVesselLocation(self):
+    vesselToRasTransform = vtk.vtkGeneralTransform()
+    self.vesselModelToVessel.GetTransformToWorld(vesselToRasTransform) # vesselToRasTransform updated in place 
+    rasToVesselTransform = vtk.vtkGeneralTransform()
+    vtk.vtkMatrix4x4.Invert(vesselToRasTransform, rasToVesselTransform)
+    #rasToVesselTransform = vesselToRasTransform.GetMatrix().Inverse()
+
+    # get retractor fiducial point in RAS coordinates 
+    reftractorReferenceNode = slicer.util.getNode('Retractor Reference')
+    retractorRascoordinates = [0, 0, 0, 0]
+    reftractorReferenceNode.GetNthFiducialWorldCoordinates(0, retractorRascoordinates)
+    retractorLocationRAS = retractorRascoordinates[:-1]
+    # transform retractor reference point from RAS to vessel coordinate system
+    retractorLocationVesselCoordinates = rasToVesselTransform.TransformFloatPoint(retractorLocationRAS)   
+    minDistance = float('inf')
+    closestPoint = []
+    for i in range(NUM_VESSEL_FIDS):
+      pathFiducialRas = [0, 0, 0, 0]
+      pathFiducialsNode.GetNthFiducialWorldCoordinates(i, vesselFiducialRas)
+      pathFiducialVesselCoordinates = rasToVesselTransform.TransformFloatPoint(pathFiducialRas[:-1])
+      distance = math.sqrt(vtkMath.Distance2BetweenPoints(retractorLocationVesselCoordinates, pathFiducialVesselCoordinates))
+      if distance < minDistance:
+        minDistance = distance
+        closestPoint = pathFiducialVesselCoordinates
+    if minDistance > 400:
+      translateVesselToRetractor_vessel = [ retractorLocationVesselCoordinates[0] - closestPoint[0], retractorLocationVesselCoordinates[1] - vesselLocation[1], retractorLocationVesselCoordinates[2] - vesselLocation[2]]
+      vesselToPath = vtk.vtkTransform()
+      vesselToPath.Translate(translateVesselToRetractor_vessel[0], translateVesselToRetractor_vessel[1], translateVesselToRetractor_vessel[2])
+      vesselModelToVessel = slicer.util.getNode('VesselModelToVessel') 
+      vesselModelToVessel.SetAndObserveTransformToParent(vesselToPath)
+    '''    
+    vesselToRAS = 
+    RAStoVessel = vesselToRAS.Inverse()
+
+    reftractorReferenceNode = slicer.util.getNode('Retractor Reference')
+    retractorRAScoordinates = [0, 0, 0, 0]
+    retractorFiducial = reftractorReferenceNode.GetNthFiducialWorldCoordinates(0, retractorRAScoordinates)
+    retractorLocationRAS = retractorRAScoordinates[:-1]
+
+    # TODO transform into vessel coords 
+    vesselFiducialsNode = slicer.util.getNode('Vessel Axis')
+    minDistance = float('inf')
+    closestPoint = []
+    for i in range(NUM_VESSEL_FIDS):
+      vesselFiducial = [0, 0, 0, 0]
+      vesselFiducialsNode.GetNthFiducialWorldCoordinates(0, vesselFiducial)
+      vesselLocation = vesselFiducial[:-1]
+      distance = math.sqrt(vtkMath.Distance2BetweenPoints(retractorLocation, vesselLocation))
+      if distance < minDistance:
+        minDistance = distance
+        closestPoint = vesselLocation
+    print minDistance, retractorLocation, closestPoint
+    if minDistance > 400:
+      translation = [ retractorLocation[0] - vesselLocation[0], retractorLocation[1] - vesselLocation[1], retractorLocation[2] - vesselLocation[2]]
+      print translation
+      vesselModelToVessel = slicer.util.getNode('VesselModelToVessel') 
+      translateVessel = vtk.vtkTransform()
+      translateVessel.Translate(translation[0], translation[1], translation[2])
+      vesselModelToVessel.SetAndObserveTransformToParent(translateVessel)
+
+      get transform to world (ras) for vessel 
+      vesselToWorld = self.vesselModelToVessel.GetTransformToWorld()
+      others: ras to vessel 
+      '''
 
   def getClosestBranch(self, cutLocation):
     branchNum = 0
@@ -737,10 +802,6 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
 
   def updateSkeletonModel(self):
     appender = vtk.vtkAppendPolyData()
-    '''
-    vesselToWorld = vtk.vtkGeneralTransform()
-    self.vesselModelToVessel.GetTransformToWorld(vesselToWorld)
-    '''
     vesselToWorld = self.vesselModelToVessel.GetTransformToParent()
     for name, visiblilityFlag in self.visiblePolydata.iteritems():
       if visiblilityFlag:
@@ -757,7 +818,6 @@ class VesselHarvestingTutorLogic(ScriptedLoadableModuleLogic):
     if modelNode is None:
       logging.error("Model node not found: {0}".format(self.SKELETON_MODEL_NAME))
     modelNode.SetAndObservePolyData(appender.GetOutput())  
-    # TODO: how to get transformed polydata out to update self.modelPolydatas?
 
 
 class VesselHarvestingTutorTest(ScriptedLoadableModuleTest):
